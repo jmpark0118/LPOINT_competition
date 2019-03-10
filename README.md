@@ -1,3 +1,9 @@
-# LPOINT_competition
+## L.Point
+competition held by LOTTE
 
-## https://jmpark0118.github.io/LPOINT_competition/
+### Objective
+- create an index for each product line
+- predict the amount of online purchase & trend
+- develop a new service
+
+### https://jmpark0118.github.io/LPOINT_competition/
