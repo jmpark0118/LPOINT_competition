@@ -1,0 +1,1 @@
+# LPOINT_competition
