@@ -1,0 +1,748 @@
+---
+title: "lpoint"
+author: "jmpark"
+date: "2019년 3월 10일"
+output: html_document
+---
+
+```{r,message=FALSE,warning=FALSE}
+########## [DATA] ########
+final <- read.csv('C:\\Users\\jeong\\Desktop\\final.csv', header = T)
+final_clean<-final[complete.cases(final),]
+
+search1<-read.csv('C:\\Users\\jeong\\Desktop\\lpoint2.csv', header = T)
+
+#--------------------------------------------------------------#
+########## [LIBRARY] ########
+
+library(tidyverse)
+library(ggplot2)
+library(gridExtra)
+library(scales)
+library(lubridate)
+library(networkD3)
+library(fmsb)
+
+# [FUNCTION_%!in%]
+'%!in%' <- function(x,y)!('%in%'(x,y))
+
+myLABEL<-c('의류/패션','식품/농수산물','생활/자동차용품',
+           '가구','가전/컴퓨터/통신기기','화장품','아동/유아용품',
+           '스포츠/레저용품','사무/문구','애완용품')
+```
+
+```{r,message=FALSE,warning=FALSE}
+########## [DATA_mySALE_PD] ###########
+
+# [DATA_pd_class2 & pd_class3]
+pd_class2 <- final %>% 
+  select(PD_C, myCLAC_NM, CLAC2_NM, mySALE_PD) %>% 
+  group_by(myCLAC_NM,CLAC2_NM) %>% 
+  summarise(count=sum(mySALE_PD))
+pd_class3 <- final %>% 
+  select(PD_C, myCLAC_NM, CLAC2_NM, mySALE_PD) %>% 
+  group_by(myCLAC_NM,CLAC2_NM) %>% 
+  count()
+
+# [DATA_mysale] 상품군별 세일인 제품의 갯수와 세일제품구매비율
+mysale <- left_join(pd_class2,pd_class3)
+mysale<-mysale %>% group_by(myCLAC_NM,CLAC2_NM) %>% 
+  transmute('sale'=count/n)
+```
+
+```{r,message=FALSE,warning=FALSE}
+#--------------------------------------------------------------#
+########## [DOUGHNUT CHART] ##################
+## [GOAL] 회원유무, 성별과 연령의 구성 살펴보기
+# [DATA_join] 회원의 유무
+total<-as.numeric(final %>% distinct(CLNT_ID) %>% count())
+yes<-as.numeric(custom %>% distinct(CLNT_ID) %>% count())
+join<-data.frame('JOIN'=c('YES','NO'),
+                 'n'=c(yes,total-yes))
+join$fraction<-join$n/sum(join$n)
+join$ymax<-cumsum(join$fraction)
+join$ymin<-c(0,head(join$ymax,-1))
+join$midpoint<-join$ymax-join$fraction/2
+join$label<-paste0(join$JOIN, '\n', '(', 
+                   round(join$n / sum(join$n) * 100, 1), "%", ')')
+join
+
+# [PLOT_p1]
+p1<-ggplot(join)+theme_void()+
+  geom_rect(aes(fill=JOIN,ymax=ymax,ymin=ymin,xmax=4,xmin=2))+
+  coord_polar(theta='y')+
+  xlim(c(0,4))+theme(legend.position = 'none')+
+  scale_fill_manual('GENDER',values = c("#F2F2F2", "#CCEBC5"))+
+  geom_text(aes(x = 3, y = midpoint, label = label),size=5)+
+  annotate("text", x = 0, y = 0, label = "회원가입의 유무",size=8)
+p1
+
+# [DATA_gender] 성별의 구성 (비회원인 경우 성별을 알 수 없으므로 제외)
+gender<-data.frame(final %>% filter(!is.na(CLNT_GENDER)) %>% group_by(CLNT_GENDER) %>%
+                     distinct(CLNT_ID) %>% count())
+levels(gender$CLNT_GENDER)<-c('여성','남성')
+gender$CLNT_GENDER<-c('여성','남성')
+gender$fraction<-gender$n/sum(gender$n)
+gender$ymax<-cumsum(gender$fraction)
+gender$ymin<-c(0,head(gender$ymax,-1))
+gender$midpoint<-gender$ymax-gender$fraction/2
+gender$label<-paste0(gender$CLNT_GENDER, '\n', '(', 
+                     round(gender$n / sum(gender$n) * 100, 1), "%", ')')
+gender
+
+# [PLOT_p2]
+p2<-ggplot(gender)+theme_void()+
+  geom_rect(aes(fill=CLNT_GENDER,ymax=ymax,ymin=ymin,xmax=4,xmin=2))+
+  coord_polar(theta='y')+
+  xlim(c(0,4))+theme(legend.position = 'none')+
+  scale_fill_manual('GENDER',values = c("#B3CDE3", "#FBB4AE"))+
+  geom_text(aes(x = 3, y = midpoint, label = label),size=5)+
+  annotate("text", x = 0, y = 0, label = "성별의 구성비",size=8)
+p2
+
+# [DATA_age] 연령의 구성
+age<-data.frame(final %>% filter(!is.na(CLNT_GENDER)) %>% group_by(CLNT_AGE) %>% 
+                  distinct(CLNT_ID) %>% count())
+age[6,2]<-sum(age[6:8,2])
+age<-age[1:6,]
+levels(age$CLNT_AGE)<-c('10','20','30','40','50','60+')
+age$CLNT_AGE<-c('10','20','30','40','50','60+')
+age$CLNT_AGE<-as.factor(age$CLNT_AGE)
+age$fraction<-age$n/sum(age$n)
+age$ymax<-cumsum(age$fraction)
+age$ymin<-c(0,head(age$ymax,-1))
+age$midpoint<-age$ymax-age$fraction/2
+age$label<-paste0(age$CLNT_AGE, '대', '\n', '(',
+                  round(age$n / sum(age$n) * 100, 1), "%",')')
+age
+
+# [PLOT_p3]
+p3<-ggplot(age)+theme_void()+
+  geom_rect(aes(fill=CLNT_AGE,ymax=ymax,ymin=ymin,xmax=4,xmin=2))+
+  coord_polar(theta='y')+
+  xlim(c(0,4))+theme(legend.position = 'none')+
+  scale_fill_manual('AGE',values = c("#FBB4AE", "#B3CDE3", "#CCEBC5",
+                                     "#DECBE4", "#FED9A6", "#FFFFCC"))+
+  geom_text(aes(x = c(4,3,3,3,3,2), y = midpoint, label = label),size=5)+
+  annotate("text", x = 0, y = 0, label = "연령의 구성비",size=8)
+p3
+
+# [DATA_price] 상품군별 총구매액
+
+price<-data.frame(final %>% filter(!is.na(CLNT_GENDER)) %>% 
+                    select(myCLAC_NM,CLAC2_NM,PD_BUY_AM,PD_BUY_CT) %>% 
+                    mutate(myTOT=as.numeric(PD_BUY_AM*PD_BUY_CT)))
+price<-price %>% group_by(myCLAC_NM) %>% summarise(n=sum(myTOT))
+
+price$fraction<-price$n/sum(price$n)
+price$ymax<-cumsum(price$fraction)
+price$ymin<-c(0,head(price$ymax,-1))
+price$midpoint<-price$ymax-price$fraction/2
+price$label<-paste0(myLABEL, '\n', '(', 
+                    round(price$n / sum(price$n) * 100, 1), "%", ')')
+price
+
+# [PLOT_p4]
+p4<-ggplot(price)+theme_void()+
+  geom_rect(aes(fill=myCLAC_NM,ymax=ymax,ymin=ymin,xmax=4,xmin=2))+
+  coord_polar(theta='y')+
+  xlim(c(0,4))+theme(legend.position = 'none')+
+  scale_fill_manual('CLASS',
+                    values = c("#D53E4F", "#F46D43", "#FDAE61", "#FEE08B", "#E6F598",
+                               "#ABDDA4", "#66C2A5", "#3288BD", "#5E4FA2", "#5E4FA2"))+
+  geom_text(aes(x = c(3,3,4,rep(3,5),2,4), y = midpoint, label = label),size=5)+
+  annotate("text", x = 0, y = 0, label = "상품군별 \n총구매액의 구성비",size=8)
+p4
+```
+
+```{r, message=FALSE, warning=FALSE}
+# [PLOT] 성별별 구매건수 (건수)
+ggplot(final_clean,aes(x=myCLAC_NM))+geom_bar()+theme_bw() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))+
+  scale_x_discrete(label=myLABEL)+
+  facet_grid(~CLNT_GENDER)
+```
+
+```{r, message=FALSE, warning=FALSE, fig.width=10}
+# [PLOT] 성별과 연령대별 구매건수 (비율)
+ggplot(final_clean,aes(myCLAC_NM))+
+  geom_bar(aes(y=..prop..,group=1))+
+  facet_grid(CLNT_GENDER~myCLNT_AGE)+theme_bw() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  scale_x_discrete(label=myLABEL)
+
+
+# [PLOT] 제품군별 구매건수 (건수)
+ggplot(final_clean,aes(x=myCLNT_AGE,fill=CLNT_GENDER))+
+  geom_bar()+theme_bw() +
+  facet_wrap(~myCLAC_NM,nrow=2, scales = 'free_y',
+             labeller = labeller(myCLAC_NM = c('1'=myLABEL[1],'2'=myLABEL[2],
+                                               '3'=myLABEL[3],'4'=myLABEL[4],
+                                               '5'=myLABEL[5],'6'=myLABEL[6],
+                                               '7'=myLABEL[7],'8'=myLABEL[8],
+                                               '9'=myLABEL[9],'10'=myLABEL[10])))
+
+# [PLOT] 전체 연령별 관심 상품군
+ggplot(final_clean,aes(x=fct_rev(myCLNT_AGE),fill=as.factor(myCLAC_NM)))+
+  geom_bar(position = position_fill(reverse = TRUE))+theme_bw()+coord_flip()+
+  scale_fill_manual('상품군 분류',
+                    values = c("#D53E4F", "#F46D43", "#FDAE61", "#FEE08B", "#E6F598",
+                               "#ABDDA4", "#66C2A5", "#3288BD", "#5E4FA2", "#5E4FA2"),
+                    labels=myLABEL)+
+  labs(x='AGE',y='',title='전체 연령별 관심 상품군')
+
+# [PLOT] 여성 고객의 전체 연령별 관심 상품군
+ggplot(final_clean %>% filter(CLNT_GENDER=='F'),
+       aes(x=fct_rev(myCLNT_AGE),fill=as.factor(myCLAC_NM)))+
+  geom_bar(position = position_fill(reverse = TRUE))+theme_bw()+coord_flip()+
+  scale_fill_manual('상품군 분류',
+                    values = c("#D53E4F", "#F46D43", "#FDAE61", "#FEE08B", "#E6F598",
+                               "#ABDDA4", "#66C2A5", "#3288BD", "#5E4FA2", "#5E4FA2"),
+                    labels=myLABEL)+
+  labs(x='AGE',y='',title='여성 고객의 전체 연령별 관심 상품군')
+
+# [PLOT] 남성 고객의 전체 연령별 관심 상품군
+ggplot(final_clean %>% filter(CLNT_GENDER=='M'),
+       aes(x=fct_rev(myCLNT_AGE),fill=as.factor(myCLAC_NM)))+
+  geom_bar(position = position_fill(reverse = TRUE))+theme_bw()+coord_flip()+
+  scale_fill_manual('상품군 분류',
+                    values = c("#D53E4F", "#F46D43", "#FDAE61", "#FEE08B", "#E6F598",
+                               "#ABDDA4", "#66C2A5", "#3288BD", "#5E4FA2", "#5E4FA2"),
+                    labels=myLABEL)+
+  labs(x='AGE',y='',title='남성 고객의 전체 연령별 관심 상품군')
+```
+
+```{r,message=FALSE,warning=FALSE}
+#--------------------------------------------------------------#
+########## [SANKEYNETWORK] ###################
+new_mydata1<-final_clean %>% group_by(CLNT_GENDER,myCLNT_AGE,myCLAC_NM) %>% count()
+new_mydata1<-new_mydata1 %>% mutate('source'=as.numeric(myCLAC_NM)-1)
+myLINK<-cbind(as.data.frame(new_mydata1),
+              data.frame('target'=rep(10:21,each=10)))
+myLINK<-myLINK[,c(5,6,4)]
+colnames(myLINK)<-c('source','target','value')
+
+myNODE<-data.frame('name'=c(myLABEL,
+                            '10대 여성','20대 여성','30대 여성',
+                            '40대 여성','50대 여성','60대 여성',
+                            '10대 남성','20대 남성','30대 남성',
+                            '40대 남성','50대 남성','60대 남성'))
+
+sankeyNetwork(Links = myLINK[1:60,], Nodes = data.frame('name'=myNODE[1:16,]),
+              Source = "source", Target = "target",
+              Value = "value", NodeID = "name",
+              fontSize = 10, nodeWidth = 10)
+myNODE$name[11:16]<-NA
+sankeyNetwork(Links = myLINK[61:120,], Nodes = myNODE,
+              Source = "source", Target = "target",
+              Value = "value", NodeID = "name",
+              fontSize = 10, nodeWidth = 10)
+```
+
+
+```{r,message=FALSE,warning=FALSE}
+#--------------------------------------------------------------#
+########## [DATA] 성별/연령별 구매금액#####################
+
+# [DATA_product_price]
+
+product_price <- final[,c("CLNT_ID", "SESS_ID", "PD_C", "myCLNT_AGE", "CLNT_GENDER",
+                          "CLNT_AGE", "myCLAC_NM", "myPD_BUY_TOT")]
+
+# [DATA_product_price_mean] 성별/연령별 평균구매금액
+product_price_mean<-product_price %>% group_by(CLNT_GENDER,CLNT_AGE) %>% 
+  summarise(myTOT_MEAN=mean(myPD_BUY_TOT, na.rm=T))
+# [DATA_product_price_n] 성별/연령별 구매건수
+product_price_n<-product_price %>% group_by(CLNT_GENDER,CLNT_AGE) %>% count()
+
+# [DATA_product_price2] 연령별 구매건수와 평균구매금액
+product_price2<-left_join(product_price_mean,product_price_n)
+product_price2<-product_price2 %>% mutate('new'=paste0(CLNT_GENDER,CLNT_AGE))
+product_price2[17,5]<-'NO INFO'
+
+ggplot(product_price2[-17,],aes(reorder(new,-myTOT_MEAN*n),myTOT_MEAN*n))+
+  geom_bar(stat='identity')+theme_bw()+
+  labs(x='GENDER & AGE',y='구매 고객의 총 구매액',
+       title='연령과 성별에 따른 총 구매액')
+
+ggplot(product_price2[-17,],aes(reorder(new,-myTOT_MEAN),myTOT_MEAN))+
+  geom_bar(stat='identity',aes(fill=CLNT_GENDER))+theme_bw()+
+  labs(x='GENDER & AGE',y='',
+       title='연령과 성별에 따른 평균구매액')+
+  theme(plot.title = element_text(size=20),
+        axis.text = element_text(size=16),
+        legend.position = 'none')+
+  scale_fill_manual('',values = c('gold1','royalblue'),na.value='grey50')
+
+ggplot(product_price2,aes(reorder(new,-n),n))+
+  geom_bar(stat='identity',aes(fill=CLNT_GENDER))+theme_bw()+
+  labs(x='GENDER & AGE', y='',
+       title = '연령과 성별에 따른 구매건수')+
+  theme(plot.title = element_text(size=20),
+        axis.text = element_text(size=14),
+        legend.position = 'none')+
+  scale_fill_manual('',values = c('gold1','royalblue'),na.value='grey50')
+```
+
+
+```{r,message=FALSE,warning=FALSE}
+#--------------------------------------------------------------------#
+# [DATA_mydata2 & mydata3]
+mydata2<-mydata1[,c("CLNT_ID", "SESS_ID", "PD_C", "CLNT_GENDER", "myCLNT_AGE",
+                    "myCLAC_NM", "CLAC2_NM", "myWEEKDAY", "myPD_BUY_TOT", 
+                    "myWEEK","myWEEKDAY")]
+```
+
+
+```{r,message=FALSE,warning=FALSE}
+#--------------------------------------------------------------------#
+########## [DATA] HIT정보 ################
+# CLNT_ID, SESS_ID로 그룹핑한 후 한번에 제품을 하나씩만 구매한 경우만 필터링!
+# (클릭 1번당 제품 1개 구입)
+# 방문만 한 경우 제외
+
+aa<-final %>% filter(myWEEK!='2018-09-30') %>% 
+  select(myWEEK,CLNT_ID,SESS_ID,HITS_SEQ,PD_C) %>% 
+  group_by(myWEEK,CLNT_ID,SESS_ID,HITS_SEQ) %>% 
+  filter(n()==1)
+
+aa1<-left_join(aa,final %>% 
+                 select(CLNT_ID,SESS_ID,HITS_SEQ,PD_C,CLAC2_NM)) %>%
+  arrange(HITS_SEQ)
+
+aa2<-aa1 %>% group_by(myWEEK,CLNT_ID,SESS_ID) %>% 
+  mutate('myHIT'=c(HITS_SEQ[1],diff(HITS_SEQ)))
+
+aa3<-aa2 %>% group_by(CLAC2_NM,myWEEK) %>% 
+  summarise('myHIT2'=mean(myHIT,na.rm = T))
+aa4<-aa3[complete.cases(aa3),]
+
+########## [DATA_search1_1] 고객의 search 정보 ################
+search1_1<-search1 %>% group_by(CLNT_ID) %>% 
+  summarise('mySEARCH'=mean(SEARCH_CNT))
+
+########## [DATA_final_type] 고객의 유형분류 ################
+final_type<-final%>%
+  select(CLNT_ID,SESS_ID,SESS_DT,SESS_SEQ,myCLAC_NM,PD_BUY_CT,PD_C,
+         myPD_BUY_TOT,myEACH_SESS_HR_V,HITS_SEQ,myCLAC_NM,mySALE_PD)
+########## [DATA_visit] 신규방문 vs 재방문 ###########
+visit_first<-final_type %>% group_by(CLNT_ID) %>% 
+  transmute('first'=min(SESS_SEQ)) %>% 
+  filter(first==1) %>% distinct(CLNT_ID)
+visit_again<-final_type %>% group_by(CLNT_ID) %>% 
+  transmute('first'=min(SESS_SEQ)) %>% 
+  filter(first>1) %>% distinct(CLNT_ID)
+
+########## [DATA_final_date] ################
+final_type_date<-final_type %>% distinct(CLNT_ID,SESS_ID,SESS_DT) %>% 
+  arrange(SESS_DT) %>% group_by(CLNT_ID) %>% filter(n()>1)
+final_type_date2<-final_type_date %>% group_by(CLNT_ID) %>% 
+  mutate('myDIFF'=c(0,diff(SESS_DT))) %>% 
+  summarise('myDATEDIFF'=sum(myDIFF)/(n()-1))
+
+########## [DATA_final_hit] ################
+final_hit<-final_type %>% group_by(CLNT_ID,SESS_ID) %>% 
+  transmute('myHIT'=max(HITS_SEQ))
+final_hit2<-final_hit %>% distinct(CLNT_ID,SESS_ID,myHIT) %>% 
+  group_by(CLNT_ID) %>% summarise('myHIT'=mean(myHIT))
+
+########## [DATA_final_brand] ################
+final_brand<-read.csv('C:\\Users\\jeong\\Desktop\\master_pop_br.csv', 
+                      header = T, fileEncoding = 'utf-8')
+final_brand2<-left_join(final_type %>% select(CLNT_ID,SESS_ID,PD_C,PD_BUY_CT),
+                        final_brand %>% select(PD_C,myPOP_BR))
+final_brand3<-final_brand2 %>% group_by(CLNT_ID) %>% 
+  summarise('myBRAND'=sum(myPOP_BR*PD_BUY_CT)/sum(PD_BUY_CT))
+
+########## [DATA_final_type2-5] (모든 고객) ################
+final_type2_1<-final_type %>% 
+  group_by(CLNT_ID) %>% 
+  summarise('myVIEW'=mean(myEACH_SESS_HR_V),
+            'myTOT_SUM'=sum(myPD_BUY_TOT,na.rm = T),
+            'myTOT_MEAN'=mean(myPD_BUY_TOT),
+            'myCLASS'=length(unique(myCLAC_NM)),
+            'myFREQ'=max(SESS_SEQ)-min(SESS_SEQ)+1,
+            'myCOUNT'=sum(PD_BUY_CT,na.rm = T),
+            'mySALE'=sum(mySALE_PD*PD_BUY_CT)/sum(PD_BUY_CT))
+final_type3_1<-left_join(final_type2_1,search1_1)
+final_type4_1<-left_join(final_type3_1,final_hit2)
+final_type4_1<-left_join(final_type4_1,final_brand3)
+final_type4_1[is.na(final_type4_1$mySEARCH),'mySEARCH']<-0
+final_type4_1$mySALE<-final_type4_1$mySALE
+final_type4_1<-final_type4_1[complete.cases(final_type4_1),]
+```
+
+
+```{r,message=FALSE,warning=FALSE}
+########## [DATA] 고객유형 나누기 ##########
+# class1 : 회원, 모바일
+# class2 : 비회원, 모바일
+# class3 : 회원, PC
+# class4 : 비회원, PC
+
+##id
+class1<-final %>% filter(!is.na(CLNT_GENDER),DVC_CTG_NM=='mobile') %>% 
+  distinct(CLNT_ID)
+class2<-final %>% filter(is.na(CLNT_GENDER),DVC_CTG_NM=='mobile')%>% 
+  distinct(CLNT_ID)
+class3<-final %>% filter(!is.na(CLNT_GENDER),DVC_CTG_NM!='mobile')%>% 
+  distinct(CLNT_ID)
+class4<-final %>% filter(is.na(CLNT_GENDER),DVC_CTG_NM!='mobile')%>% 
+  distinct(CLNT_ID)
+
+########## [FUNCTION_data_summ] ########
+data_summ<-function(mydata){
+  mydata2<-mydata %>% group_by(group) %>% 
+    summarise(
+      '검색건수'=mean(mySEARCH),
+      '조회수'=mean(myHIT),
+      '뷰시간'=mean(myVIEW),
+      '구매금액총합'=mean(myTOT_SUM),
+      '구매금액평균'=mean(myTOT_MEAN),
+      '세일제품구매율'=mean(mySALE),
+      '구매품목종류'=mean(myCLASS),
+      '구매건수'=mean(myCOUNT),
+      '방문횟수'=mean(myFREQ),
+      '브랜드선호도'=mean(myBRAND))
+  return(mydata2)
+}
+```
+
+
+```{r,message=FALSE,warning=FALSE}
+########## [DATA] class1 & class3 (회원) ##########
+final_member<-final_type4_1 %>% filter(CLNT_ID %in% visit_again$CLNT_ID)
+final_data<-final_member %>% filter(CLNT_ID %in% c(class1$CLNT_ID,
+                                                   class3$CLNT_ID))
+
+mydata<-final_data
+
+mydata[,2:11] <- lapply(mydata[,2:11], function(x) scale(x))
+mymin<-as.tibble(lapply(mydata[,2:11], function(x) min(x)))
+mymin
+mymax<-as.tibble(lapply(mydata[,2:11], function(x) max(x)))
+mymax
+
+# class1&class3 : k=4
+a<-kmeans(mydata %>% select(-CLNT_ID),4,iter.max = 200, nstart = 5)
+a$size
+mydata_c13<-mydata %>% mutate('group'=a[['cluster']])
+mydata_c13_id<-mydata_c13 %>% select(CLNT_ID,group)
+
+mydata2_c13<-data_summ(mydata_c13)
+mydata2_c13 %>% print(width=Inf)
+
+mydata_radar<-mydata2_c13[,c(4,5,6,8,10,9,7,2,3,11)]
+colnames(mydata_radar)<-colnames(mydata)[2:11]
+
+radar_1<-(mydata_radar[1,]-mymin)/(mymax-mymin)
+radar_2<-(mydata_radar[2,]-mymin)/(mymax-mymin)
+radar_3<-(mydata_radar[3,]-mymin)/(mymax-mymin)
+radar_4<-(mydata_radar[4,]-mymin)/(mymax-mymin)
+radar<-rbind(radar_1,radar_2,radar_3,radar_4)
+
+radar
+
+alabel<-paste0(round(a$size/sum(a$size)*100,1),'%')
+label1<-c(paste0('충성고객형 (',alabel[1],')'),
+          paste0('철저한 조사형 (',alabel[2],')'),
+          paste0('실속형 (',alabel[3],')'),
+          paste0('브랜드 매니아형 (',alabel[4],')'))
+
+# radarchart
+radarchart(radar,pcol=c(1,2,'gold',4),maxmin=F,
+           vlabels = c('뷰시간','구매금액총합','구매금액평균','구매품목종류',
+                       '방문횟수','구매건수','세일제품구매율','검색건수',
+                       '조회수','브랜드선호도'),
+           plty=1,pfcol=alpha(c(1,2,'gold',4),0.3),
+           title='회원인 고객의 유형',plwd=3)
+legend(x=1.2, y=1.3, legend = label1, bty = "n", 
+       pch=20 , col=c(1,2,'gold',4) , text.col = "ivory4", cex=1, 
+       pt.cex=1, y.intersp = 0.5)
+
+mydata_c13_id<-left_join(mydata_c13_id,custom)
+ggplot(mydata_c13_id,aes(CLNT_AGE,fill=CLNT_GENDER))+
+  theme_bw()+geom_bar()+facet_grid(~group)
+```
+
+
+```{r,message=FALSE,warning=FALSE}
+########## [DATA] class2 & class4 (비회원) ##########
+final_notmember<-final_type4_1 %>% filter(CLNT_ID %in% visit_again$CLNT_ID)
+final_data<-final_notmember %>% filter(CLNT_ID %in% c(class2$CLNT_ID,
+                                                      class4$CLNT_ID))
+
+mydata<-final_data
+
+mydata[,2:11] <- lapply(mydata[,2:11], function(x) scale(x))
+mymin<-as.tibble(lapply(mydata[,2:11], function(x) min(x)))
+mymin
+mymax<-as.tibble(lapply(mydata[,2:11], function(x) max(x)))
+mymax
+
+# class1&class3 : k=3
+a2<-kmeans(mydata %>% select(-CLNT_ID),3,iter.max = 200, nstart = 5)
+a2$size
+mydata_c24<-mydata %>% mutate('group'=a2[['cluster']])
+mydata_c24_id<-mydata_c24 %>% select(CLNT_ID,group)
+
+mydata2_c24<-data_summ(mydata_c24)
+mydata2_c24 %>% print(width=Inf)
+
+mydata_radar<-mydata2_c24[,c(4,5,6,8,10,9,7,2,3,11)]
+colnames(mydata_radar)<-colnames(mydata2)[2:11]
+
+radar_1<-(mydata_radar[1,]-mymin)/(mymax-mymin)
+radar_2<-(mydata_radar[2,]-mymin)/(mymax-mymin)
+radar_3<-(mydata_radar[3,]-mymin)/(mymax-mymin)
+radar<-rbind(radar_1,radar_2,radar_3)
+radar
+
+a2label<-paste0(round(a2$size/sum(a2$size)*100,1),'%')
+label2<-c(paste0('브랜드 매니아형 (',a2label[1],')'),
+          paste0('충성고객형 (',a2label[2],')'),
+          paste0('실속형 (',a2label[3],')'))
+
+# radarchart
+radarchart(radar,pcol=c(4,1,'gold'),maxmin=F,
+           vlabels = c('뷰시간','구매금액총합','구매금액평균','구매품목종류',
+                       '방문횟수','구매건수','세일제품구매율','검색건수',
+                       '조회수','브랜드선호도'),
+           plty=1,pfcol=alpha(c(4,1,'gold'),0.3),
+           title='비회원인 고객의 유형',plwd=3)
+legend(x=1.2, y=1.3, legend = label2, bty = "n", 
+       pch=20 , col=c(4,1,'gold') , text.col = "ivory4", cex=1, 
+       pt.cex=1, y.intersp = 0.5)
+```
+
+
+```{r,message=FALSE,warning=FALSE}
+########## [DATA_visit] 신규방문 vs 재방문 ###########
+visit_first<-final_type %>% group_by(CLNT_ID) %>% 
+  transmute('first'=min(SESS_SEQ)) %>% 
+  filter(first==1) %>% distinct(CLNT_ID)
+visit_again<-final_type %>% group_by(CLNT_ID) %>% 
+  transmute('first'=min(SESS_SEQ)) %>% 
+  filter(first>1) %>% distinct(CLNT_ID)
+# 신규방문한 고객 90720명
+# 재방문한 고객 831231명
+
+## [DATA_join] 신규와 기존의 비율
+total<-nrow(visit_again)+nrow(visit_first)
+yes<-nrow(visit_first)
+join<-data.frame('JOIN'=c('신규고객','기존고객'),
+                 'n'=c(yes,total-yes))
+join$fraction<-join$n/sum(join$n)
+join$ymax<-cumsum(join$fraction)
+join$ymin<-c(0,head(join$ymax,-1))
+join$midpoint<-join$ymax-join$fraction/2
+join$label<-paste0(join$JOIN, '\n', '(', 
+                   round(join$n / sum(join$n) * 100, 1), "%", ')')
+join
+# [PLOT_p1]
+p1<-ggplot(join)+theme_void()+
+  geom_rect(aes(fill=JOIN,ymax=ymax,ymin=ymin,xmax=4,xmin=2))+
+  coord_polar(theta='y')+
+  xlim(c(0,4))+theme(legend.position = 'none')+
+  scale_fill_manual('',values = c("#F2F2F2",'#FDE0EF'))+
+  geom_text(aes(x = 3, y = midpoint, label = label),size=5)+
+  annotate("text", x = 0, y = 0, label = "신규고객과\n 기존고객의\n 비율",size=8)
+p1
+
+########## 신규방문 vs 재방문 ###########
+final_data<-final_type4_1 %>% filter(CLNT_ID %in% visit_first$CLNT_ID)
+mydata<-final_data %>% select(-CLNT_ID)
+mydata_first<-mydata %>% mutate('group'=1)
+final_data<-final_type4_1 %>% filter(CLNT_ID %in% visit_again$CLNT_ID)
+mydata<-final_data %>% select(-CLNT_ID)
+mydata_again<-mydata %>% mutate('group'=2)
+mydata<-rbind(mydata_first,mydata_again)
+# 신규방문한 고객 group==1
+# 재방문한 고객 group==2
+
+mydata[,1:10] <- lapply(mydata[,1:10], function(x) scale(x))
+mymin<-as.tibble(lapply(mydata[,1:10], function(x) min(x)))
+mymin
+mymax<-as.tibble(lapply(mydata[,1:10], function(x) max(x)))
+mymax
+
+mydata2<-data_summ(mydata)
+
+mydata_radar<-mydata2[,c(4,5,6,8,10,9,7,2,3,11)]
+colnames(mydata_radar)<-colnames(mydata)[1:10]
+
+radar_first<-(mydata_radar[1,]-mymin)/(mymax-mymin)
+radar_again<-(mydata_radar[2,]-mymin)/(mymax-mymin)
+radar<-rbind(radar_first,radar_again)
+radar
+
+radarchart(radar,
+           plty=1,pfcol=alpha(1:3,0.2),maxmin=F,
+           vlabels = c('뷰시간','구매금액총합','구매금액평균','구매품목종류',
+                       '방문횟수','구매건수','세일제품구매율','검색건수',
+                       '조회수','브랜드선호도'),
+           title='신규고객 vs 기존고객',plwd=3)
+legend(x=1, y=1.5, legend = c('신규고객','기존고객'), bty = "n", 
+       pch=20 , col=1:2 , text.col = "darkgrey", cex=1, 
+       pt.cex=1, y.intersp = 0.5)
+```
+
+
+```{r,message=FALSE,warning=FALSE}
+###### 신규방문 vs 재방문 (고객정보) ######
+first<-final %>% filter(CLNT_ID %in% visit_first$CLNT_ID) %>% 
+  select(CLNT_ID,CLNT_GENDER,myCLNT_AGE,myCLAC_NM,DVC_CTG_NM,
+         ZON_NM,CITY_NM,myPD_BUY_TOT)
+again<-final %>% filter(CLNT_ID %in% visit_again$CLNT_ID) %>% 
+  select(CLNT_ID,CLNT_GENDER,myCLNT_AGE,myCLAC_NM,DVC_CTG_NM,
+         ZON_NM,CITY_NM,myPD_BUY_TOT)
+
+first_unique<-first %>% 
+  distinct(CLNT_ID,CLNT_GENDER,myCLNT_AGE,DVC_CTG_NM,ZON_NM,CITY_NM)
+again_unique<-again %>% 
+  distinct(CLNT_ID,CLNT_GENDER,myCLNT_AGE,DVC_CTG_NM,ZON_NM,CITY_NM)
+
+## [DATA_join] 회원의 유무
+total<-nrow(first_unique)
+yes<-nrow(first_unique %>% filter(!is.na(first_unique$CLNT_GENDER)))
+join<-data.frame('JOIN'=c('YES','NO'),
+                 'n'=c(yes,total-yes))
+join$fraction<-join$n/sum(join$n)
+join$ymax<-cumsum(join$fraction)
+join$ymin<-c(0,head(join$ymax,-1))
+join$midpoint<-join$ymax-join$fraction/2
+join$label<-paste0(join$JOIN, '\n', '(', 
+                   round(join$n / sum(join$n) * 100, 1), "%", ')')
+join
+# [PLOT_p1]
+p1<-ggplot(join)+theme_void()+
+  geom_rect(aes(fill=JOIN,ymax=ymax,ymin=ymin,xmax=4,xmin=2))+
+  coord_polar(theta='y')+
+  xlim(c(0,4))+theme(legend.position = 'none')+
+  scale_fill_manual('',values = c("#F2F2F2", "#CCEBC5"))+
+  geom_text(aes(x = 3, y = midpoint, label = label),size=5)+
+  annotate("text", x = 0, y = 0, label = "신규고객의 \n회원가입의 유무",size=8)
+p1
+
+## [DATA_join] 회원의 유무
+total<-nrow(again_unique)
+yes<-nrow(again_unique %>% filter(!is.na(again_unique$CLNT_GENDER)))
+join<-data.frame('JOIN'=c('YES','NO'),
+                 'n'=c(yes,total-yes))
+join$fraction<-join$n/sum(join$n)
+join$ymax<-cumsum(join$fraction)
+join$ymin<-c(0,head(join$ymax,-1))
+join$midpoint<-join$ymax-join$fraction/2
+join$label<-paste0(join$JOIN, '\n', '(', 
+                   round(join$n / sum(join$n) * 100, 1), "%", ')')
+join
+# [PLOT_p2]
+p2<-ggplot(join)+theme_void()+
+  geom_rect(aes(fill=JOIN,ymax=ymax,ymin=ymin,xmax=4,xmin=2))+
+  coord_polar(theta='y')+
+  xlim(c(0,4))+theme(legend.position = 'none')+
+  scale_fill_manual('',values = c("#F2F2F2", "#CCEBC5"))+
+  geom_text(aes(x = 3, y = midpoint, label = label),size=5)+
+  annotate("text", x = 0, y = 0, label = "기존고객의 \n회원가입의 유무",size=8)
+p2
+
+grid.arrange(p1,p2,nrow=1)
+
+## [DATA_device] 기기유형
+# 신규방문
+total<-nrow(first_unique)
+desktop<-nrow(first_unique %>% filter(DVC_CTG_NM=='desktop'))
+mobile<-nrow(first_unique %>% filter(DVC_CTG_NM=='mobile'))
+tablet<-nrow(first_unique %>% filter(DVC_CTG_NM=='tablet'))
+join<-data.frame('device'=c('데스크탑','모바일','태블릿PC'),
+                 'n'=c(desktop,mobile,tablet))
+join$fraction<-join$n/sum(join$n)
+join$ymax<-cumsum(join$fraction)
+join$ymin<-c(0,head(join$ymax,-1))
+join$midpoint<-join$ymax-join$fraction/2
+join$label<-paste0(join$device, '\n', '(', 
+                   round(join$n / sum(join$n) * 100, 1), "%", ')')
+join
+# [PLOT_p1]
+p1<-ggplot(join)+theme_void()+
+  geom_rect(aes(fill=device,ymax=ymax,ymin=ymin,xmax=4,xmin=2))+
+  coord_polar(theta='y')+
+  xlim(c(0,4))+theme(legend.position = 'none')+
+  scale_fill_manual('',values = c( "#CBD5E8", "#FFF2AE", "darkgrey"))+
+  geom_text(aes(x = 3, y = midpoint, label = label),size=5)+
+  annotate("text", x = 0, y = 0, label = "신규고객의 \n기기유형",size=8)
+p1
+
+total<-nrow(again_unique)
+desktop<-nrow(again_unique %>% filter(DVC_CTG_NM=='desktop'))
+mobile<-nrow(again_unique %>% filter(DVC_CTG_NM=='mobile'))
+tablet<-nrow(again_unique %>% filter(DVC_CTG_NM=='tablet'))
+join<-data.frame('device'=c('데스크탑','모바일','태블릿PC'),
+                 'n'=c(desktop,mobile,tablet))
+join$fraction<-join$n/sum(join$n)
+join$ymax<-cumsum(join$fraction)
+join$ymin<-c(0,head(join$ymax,-1))
+join$midpoint<-join$ymax-join$fraction/2
+join$label<-paste0(join$device, '\n', '(', 
+                   round(join$n / sum(join$n) * 100, 1), "%", ')')
+join
+# [PLOT_p2]
+# 재방문
+p2<-ggplot(join)+theme_void()+
+  geom_rect(aes(fill=device,ymax=ymax,ymin=ymin,xmax=4,xmin=2))+
+  coord_polar(theta='y')+
+  xlim(c(0,4))+theme(legend.position = 'none')+
+  scale_fill_manual('',values = c( "#CBD5E8", "#FFF2AE", "darkgrey"))+
+  geom_text(aes(x = 3, y = midpoint, label = label),size=5)+
+  annotate("text", x = 0, y = 0, label = "기존고객의 \n기기유형",size=8)
+p2
+
+grid.arrange(p1,p2,nrow=1)
+```
+
+
+```{r,message=FALSE,warning=FALSE}
+library(devtools)
+library(exploratory)
+library(arules)
+
+########## [DATA] #############
+temp1<-final %>% distinct(CLNT_ID,SESS_DT,myCLAC_NM) %>% 
+  group_by(CLNT_ID,SESS_DT) %>% filter(n()>1)
+temp2<-temp1 %>% group_by(CLNT_ID,SESS_DT) %>% 
+  arrange(CLNT_ID,myCLAC_NM) %>% dplyr::mutate('obs'=1:n())
+temp3<-temp2 %>% spread(key=obs,value = myCLAC_NM)
+temp4<-as.data.frame(temp3)[,3:9]
+temp5<-temp4 %>% dplyr::mutate('transaction.id'=row_number())
+temp5<-temp5 %>% gather(`1`,`2`,`3`,`4`,`5`,`6`,`7`,
+                        key=key,value=product)
+temp5<-temp5[complete.cases(temp5),]
+temp5<-temp5 %>% arrange(transaction.id,key)
+
+result1<-do_apriori(temp5,subject = product,key = transaction.id,
+                   min_support = 0.0001, min_confidence = 0.6)
+result1
+
+########## [DATA] ############
+temp11<-final %>% distinct(CLNT_ID,SESS_DT,CLAC2_NM) %>% 
+  group_by(CLNT_ID,SESS_DT) %>% filter(n()>1)
+temp12<-temp11 %>% group_by(CLNT_ID,SESS_DT) %>% 
+  arrange(CLNT_ID,CLAC2_NM) %>% mutate('obs'=1:n())
+temp13<-temp12 %>% spread(key=obs,value = CLAC2_NM)
+temp14<-as.data.frame(temp13)[,3:19]
+
+temp15<-temp14 %>% mutate('transaction.id'=row_number())
+temp15<-temp15 %>% gather(`1`,`2`,`3`,`4`,`5`,`6`,`7`,`8`,`9`,`10`,
+                          `11`,`12`,`13`,`14`,`15`,`16`,`17`,
+                          key=key,value=product)
+temp15<-temp15[complete.cases(temp15),]
+temp15<-temp15 %>% arrange(transaction.id,key)
+
+result2<-do_apriori(temp15,subject = product,key = transaction.id,
+                   min_support = 0.001, min_confidence = 0.5, max_basket_items = 2)
+result2
+
+result3<-do_apriori(temp15,subject = product,key = transaction.id,
+                    min_support = 0.00006, min_confidence = 0.8)
+result3
+```
