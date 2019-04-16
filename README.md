@@ -14,4 +14,4 @@
     + 제공 데이터 : 온라인 행동 데이터, 상품분류정보
     + 외부 데이터 : 통계청, 기상청 등 공공데이터, 소셜 데이터 등 자유롭게 
 
-## https://jmpark0118.github.io/LPOINT_competition/
+* https://jmpark0118.github.io/LPOINT_competition/
