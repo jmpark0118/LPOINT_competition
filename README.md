@@ -1,4 +1,4 @@
-## L.Point
+## L.Point(https://competition.lpoint.com/index.tran)
 competition held by LOTTE
 
 ### Objective
